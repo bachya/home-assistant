@@ -1,0 +1,17 @@
+{
+  "domain": "eufy_security",
+  "name": "Eufy Security",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/eufy_security",
+  "requirements": [
+    "eufy-security-ws-python==0.0.1"
+  ],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@bachya"
+  ],
+  "iot_class": "local_push"
+}

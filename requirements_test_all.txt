@@ -326,6 +326,9 @@ ephem==3.7.7.0
 # homeassistant.components.epson
 epson-projector==0.4.2
 
+# homeassistant.components.eufy_security
+eufy-security-ws-python==0.0.1
+
 # homeassistant.components.faa_delays
 faadelays==0.0.7
 
