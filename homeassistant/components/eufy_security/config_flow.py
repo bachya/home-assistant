@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from eufy_security_ws_python import WebsocketClient
+from eufy_security_ws_python.client import WebsocketClient
 from eufy_security_ws_python.errors import BaseEufySecurityServerError
 import voluptuous as vol
 
@@ -15,7 +15,11 @@ from homeassistant.helpers import aiohttp_client
 
 from .const import CONF_WEBSOCKET_URI, DOMAIN, LOGGER
 
-STEP_USER_DATA_SCHEMA = vol.Schema({CONF_WEBSOCKET_URI: str})
+DEFAULT_URL = "ws://localhost:3000"
+
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {vol.Required(CONF_WEBSOCKET_URI, default=DEFAULT_URL): str}
+)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:

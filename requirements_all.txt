@@ -584,7 +584,7 @@ epsonprinter==0.0.9
 eternalegypt==0.0.12
 
 # homeassistant.components.eufy_security
-eufy-security-ws-python==0.0.1
+eufy-security-ws-python==0.0.3
 
 # homeassistant.components.keyboard_remote
 # evdev==1.4.0
