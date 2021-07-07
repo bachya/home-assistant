@@ -6,7 +6,9 @@ from functools import partial
 from pyflunearyou import Client
 from pyflunearyou.errors import FluNearYouError
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import aiohttp_client, config_validation as cv
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -25,7 +27,7 @@ CONFIG_SCHEMA = cv.deprecated(DOMAIN)
 PLATFORMS = ["sensor"]
 
 
-async def async_setup_entry(hass, entry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Flu Near You as config entry."""
     hass.data.setdefault(DOMAIN, {DATA_COORDINATOR: {}})
     hass.data[DOMAIN][DATA_COORDINATOR][entry.entry_id] = {}
@@ -67,7 +69,7 @@ async def async_setup_entry(hass, entry):
     return True
 
 
-async def async_unload_entry(hass, entry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload an Flu Near You config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
