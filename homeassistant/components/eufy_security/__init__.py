@@ -7,90 +7,119 @@ from eufy_security_ws_python.client import WebsocketClient
 from eufy_security_ws_python.errors import BaseEufySecurityServerError
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client
 
 from .const import CONF_WEBSOCKET_URI, DOMAIN, LOGGER
 
+DATA_LISTEN_TASK = "listen_task"
+DATA_UNSUBSCRIBE_CALLBACKS = "unsubscribe_callbacks"
 DATA_WEBSOCKET_CLIENT = "websocket_client"
 
-PLATFORMS = []
+PLATFORMS = ["sensor"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Eufy Security from a config entry."""
-    hass.data.setdefault(DOMAIN, {DATA_WEBSOCKET_CLIENT: {}})
+    hass.data.setdefault(
+        DOMAIN,
+        {
+            DATA_LISTEN_TASK: {},
+            DATA_UNSUBSCRIBE_CALLBACKS: {},
+            DATA_WEBSOCKET_CLIENT: {},
+        },
+    )
+    hass.data[DOMAIN][DATA_UNSUBSCRIBE_CALLBACKS][entry.entry_id] = []
+    hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id] = None
 
-    websocket = hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id] = Websocket(
-        hass, entry
+    session = aiohttp_client.async_get_clientsession(hass)
+    hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id] = WebsocketClient(
+        entry.data[CONF_WEBSOCKET_URI], session
     )
 
-    hass.async_create_task(websocket.async_init())
+    await async_websocket_init(hass, entry)
 
-    hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    async def handle_ha_shutdown(_: Event) -> None:
+        """React when shutdown occurs."""
+        await async_websocket_shutdown(hass, entry)
+
+    hass.data[DOMAIN][DATA_UNSUBSCRIBE_CALLBACKS][entry.entry_id].append(
+        hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, handle_ha_shutdown)
+    )
+
+    # hass.config_entries.async_setup_platforms(entry, PLATFORMS)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    # unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = True
 
     if unload_ok:
-        websocket = hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT].pop(entry.entry_id)
-        await websocket.async_shutdown()
+        if entry.entry_id in hass.data[DOMAIN][DATA_LISTEN_TASK]:
+            await async_websocket_shutdown(hass, entry)
+        for unsub in hass.data[DOMAIN][DATA_UNSUBSCRIBE_CALLBACKS].pop(entry.entry_id):
+            unsub()
 
     return unload_ok
 
 
-class Websocket:
-    """Define a class to manage the connection to the eufy-security-ws websocket."""
+async def async_websocket_init(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Initialize connection to the websocket."""
+    client = hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id]
+    driver_ready = asyncio.Event()
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        """Initialize."""
-        session = aiohttp_client.async_get_clientsession(hass)
-        self._client = WebsocketClient(entry.data[CONF_WEBSOCKET_URI], session)
-        self._driver_ready = asyncio.Event()
-        self._entry = entry
-        self._hass = hass
-        self._listen_task: asyncio.Task = None
+    try:
+        await client.async_connect()
+    except BaseEufySecurityServerError as err:
+        raise ConfigEntryNotReady(err) from err
 
-    async def _async_client_listen(self):
-        """Start listening with the client."""
-        should_reload = True
-        try:
-            await self._client.async_listen(self._driver_ready)
-        except asyncio.CancelledError:
-            should_reload = False
-        except BaseEufySecurityServerError as err:
-            LOGGER.error("Failed to listen: %s", err)
-        except Exception as err:  # pylint: disable=broad-except
-            LOGGER.exception("Unexpected exception: %s", err)
+    hass.data[DOMAIN][DATA_LISTEN_TASK][entry.entry_id] = asyncio.create_task(
+        async_websocket_listen(hass, entry, driver_ready)
+    )
 
-        if should_reload:
-            LOGGER.info("Disconnected from server. Reloading integration")
-            self._hass.async_create_task(
-                self._hass.config_entries.async_reload(self._entry.entry_id)
-            )
+    try:
+        await driver_ready.wait()
+    except asyncio.CancelledError:
+        LOGGER.debug("Cancelling start platforms")
+        return
 
-    async def async_init(self) -> None:
-        """Initialize the websocket manager."""
-        await self._client.async_connect()
+    LOGGER.info("Connection to Zwave JS Server initialized")
 
-        self._listen_task = asyncio.create_task(self._async_client_listen())
 
-        try:
-            await self._driver_ready.wait()
-        except asyncio.CancelledError:
-            LOGGER.debug("Cancelling start platforms")
-            return
+async def async_websocket_listen(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    driver_ready: asyncio.Event,
+) -> None:
+    """Start listening to the websocket."""
+    client = hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id]
+    should_reload = True
 
-        LOGGER.info("Connection to Zwave JS Server initialized")
+    try:
+        await client.async_listen(driver_ready)
+    except asyncio.CancelledError:
+        should_reload = False
+    except BaseEufySecurityServerError as err:
+        LOGGER.error("Failed to listen: %s", err)
+    except Exception as err:  # pylint: disable=broad-except
+        LOGGER.exception("Unexpected exception: %s", err)
 
-    async def async_shutdown(self) -> None:
-        """Shut down the websocket manager."""
-        self._listen_task.cancel()
+    if should_reload:
+        LOGGER.info("Disconnected from server. Reloading integration")
+        hass.async_create_task(hass.config_entries.async_reload(entry.entry_id))
 
-        if self._client.connected:
-            await self._client.async_disconnect()
-            LOGGER.info("Disconnected from Zwave JS Server")
+
+async def async_websocket_shutdown(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Shut down connection to the websocket."""
+    listen_task = hass.data[DOMAIN][DATA_LISTEN_TASK].pop(entry.entry_id)
+    listen_task.cancel()
+
+    client = hass.data[DOMAIN][DATA_WEBSOCKET_CLIENT][entry.entry_id]
+    if client.connected:
+        await client.async_disconnect()
+        LOGGER.info("Disconnected from Zwave JS Server")
