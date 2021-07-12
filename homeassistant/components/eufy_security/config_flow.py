@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from eufy_security_ws_python.client import WebsocketClient
 from eufy_security_ws_python.errors import BaseEufySecurityServerError
+from eufy_security_ws_python.version import async_get_server_version
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -22,19 +22,33 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+class CannotConnect(HomeAssistantError):
+    """Indicate connection error."""
+
+
+class InvalidInput(HomeAssistantError):
+    """Error to indicate input data is invalid."""
+
+    def __init__(self, error: str) -> None:
+        """Initialize error."""
+        super().__init__()
+        self.error = error
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
+    if not data[CONF_WEBSOCKET_URI].startswith(("ws://", "wss://")):
+        raise InvalidInput("invalid_ws_url")
+
     session = aiohttp_client.async_get_clientsession(hass)
 
     try:
-        async with WebsocketClient(data[CONF_WEBSOCKET_URI], session):
-            pass
+        await async_get_server_version(data[CONF_WEBSOCKET_URI], session)
     except BaseEufySecurityServerError as err:
-        raise CannotConnect from err
-
+        raise InvalidInput("cannot_connect") from err
     return {"title": "Eufy Security"}
 
 
@@ -56,8 +70,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             info = await validate_input(self.hass, user_input)
-        except CannotConnect:
-            errors["base"] = "cannot_connect"
+        except InvalidInput as err:
+            errors[CONF_WEBSOCKET_URI] = err.error
         except Exception:  # pylint: disable=broad-except
             LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
@@ -67,7 +81,3 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
-
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
