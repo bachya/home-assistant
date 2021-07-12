@@ -185,6 +185,7 @@ class EufySecurityEntity(Entity):
             ATTR_ATTRIBUTION: "Data provided by Eufy Security"
         }
         self._metadata = metadata
+        self._attr_should_poll = False
 
     @callback
     def _async_update_from_latest_data(self) -> None:
