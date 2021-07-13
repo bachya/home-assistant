@@ -4,7 +4,7 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/eufy_security",
   "requirements": [
-    "eufy-security-ws-python==0.0.3"
+    "eufy-security-ws-python==0.0.4"
   ],
   "ssdp": [],
   "zeroconf": [],
