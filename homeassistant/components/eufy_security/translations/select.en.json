@@ -1,0 +1,15 @@
+{
+    "state": {
+        "_": {
+            "away": "Away",
+            "custom_1": "Custom Mode 1",
+            "custom_2": "Custom Mode 2",
+            "custom_3": "Custom Mode 3",
+            "disarmed": "Disarmed",
+            "geo": "Geofencing",
+            "home": "Home",
+            "off": "Off",
+            "schedule": "Schedule"
+        }
+    }
+}

@@ -23,7 +23,6 @@ from homeassistant.helpers.entity import Entity
 from .const import (
     CONF_WEBSOCKET_URI,
     DATA_CLIENT,
-    DATA_METADATA,
     DOMAIN,
     EVENT_GUARD_MODE_CHANGED,
     LOGGER,
@@ -51,13 +50,11 @@ def async_get_event_from_data(data: dict[str, Any]) -> str | None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Eufy Security from a config entry."""
-    hass.data.setdefault(DOMAIN, {DATA_CLIENT: {}, DATA_METADATA: {}})
+    hass.data.setdefault(DOMAIN, {DATA_CLIENT: {}})
 
     eufy_security = hass.data[DOMAIN][DATA_CLIENT][entry.entry_id] = EufySecurity(
         hass, entry
     )
-    hass.data[DOMAIN][DATA_METADATA][entry.entry_id] = {}
-
     await eufy_security.async_startup()
 
     hass.config_entries.async_setup_platforms(entry, PLATFORMS)
@@ -72,7 +69,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         eufy_security = hass.data[DOMAIN][DATA_CLIENT].pop(entry.entry_id)
         await eufy_security.async_shutdown()
-        hass.data[DOMAIN][DATA_METADATA].pop(entry.entry_id)
 
     return unload_ok
 
@@ -90,6 +86,7 @@ class EufySecurity:
 
         session = aiohttp_client.async_get_clientsession(hass)
         self.client = WebsocketClient(entry.data[CONF_WEBSOCKET_URI], session)
+        self.metadata: dict[str, Any] = {}
 
     async def async_listen(self) -> None:
         """Start listening to the websocket."""
@@ -147,15 +144,13 @@ class EufySecurity:
             self._hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, handle_ha_shutdown)
         )
 
-        async def async_get_properties_metadata(eufy_device: Device | Station) -> None:
-            """Store station or device metadata."""
-            metadata = await eufy_device.async_get_properties_metadata()
-            self._hass.data[DOMAIN][DATA_METADATA][self._entry.entry_id][
-                eufy_device.serial_number
-            ] = metadata["properties"]
+        async def async_get_properties_metadata(eufy_object: Device | Station) -> None:
+            """Get properties metadata for the provided device or base station."""
+            metadata = await eufy_object.async_get_properties_metadata()
+            self.metadata[eufy_object.serial_number] = metadata["properties"]
 
         metadata_tasks = []
-        for device in self.client.driver.devices.values():
+        for device in self.client.driver.stations.values():
             metadata_tasks.append(async_get_properties_metadata(device))
         for station in self.client.driver.stations.values():
             metadata_tasks.append(async_get_properties_metadata(station))
@@ -179,13 +174,13 @@ class EufySecurity:
 class EufySecurityEntity(Entity):
     """Define a base Eufy Security entity."""
 
-    def __init__(self, metadata: dict[str, Any]) -> None:
+    def __init__(self, eufy_security: EufySecurity) -> None:
         """Initialize."""
         self._attr_extra_state_attributes = {
             ATTR_ATTRIBUTION: "Data provided by Eufy Security"
         }
-        self._metadata = metadata
         self._attr_should_poll = False
+        self._eufy_security = eufy_security
 
     @callback
     def _async_update_from_latest_data(self) -> None:
@@ -210,9 +205,9 @@ class EufySecurityEntity(Entity):
 class StationEntity(EufySecurityEntity):
     """Define a base station entity."""
 
-    def __init__(self, metadata: dict[str, Any], station: Station) -> None:
+    def __init__(self, eufy_security: EufySecurity, station: Station) -> None:
         """Initialize."""
-        super().__init__(metadata)
+        super().__init__(eufy_security)
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, station.serial_number)},
@@ -228,9 +223,9 @@ class StationEntity(EufySecurityEntity):
 class DeviceEntity(EufySecurityEntity):
     """Define a base station entity."""
 
-    def __init__(self, metadata: dict[str, Any], device: Device) -> None:
+    def __init__(self, eufy_security: EufySecurity, device: Device) -> None:
         """Initialize."""
-        super().__init__(metadata)
+        super().__init__(eufy_security)
 
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device.serial_number)},
