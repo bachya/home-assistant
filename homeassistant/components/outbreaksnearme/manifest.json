@@ -1,0 +1,17 @@
+{
+  "domain": "outbreaksnearme",
+  "name": "Outbreaks Near Me",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/outbreaksnearme",
+  "requirements": [
+    "pyoutbreaksnearme==2022.08.0"
+  ],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@bachya"
+  ],
+  "iot_class": "cloud_polling"
+}

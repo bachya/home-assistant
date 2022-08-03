@@ -262,6 +262,7 @@ FLOWS = {
         "opentherm_gw",
         "openuv",
         "openweathermap",
+        "outbreaksnearme",
         "overkiz",
         "ovo_energy",
         "owntracks",

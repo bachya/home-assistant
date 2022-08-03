@@ -1200,6 +1200,9 @@ pyotgw==2.0.2
 # homeassistant.components.otp
 pyotp==2.6.0
 
+# homeassistant.components.outbreaksnearme
+pyoutbreaksnearme==2022.08.0
+
 # homeassistant.components.overkiz
 pyoverkiz==1.4.2
 
